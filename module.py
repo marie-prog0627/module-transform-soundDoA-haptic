@@ -1,3 +1,5 @@
+# coding: UTF-8
+
 import numpy as np
 import pyaudio
 import wave
@@ -37,7 +39,7 @@ ser = serial.Serial('/dev/ttyACM0',115200)
 #prepare hosting
 host = "localhost"
 port = 10500
-p = subprocess.Popen(["./julius_start.sh"], stdout=subprocess.PIPE, shell=True)
+p = subprocess.Popen(["./start.sh"], stdout=subprocess.PIPE, shell=True)
 pid = str(p.stdout.read().decode('utf-8')) # juliusのプロセスIDを取得
 time.sleep(5)
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -125,7 +127,7 @@ def transmission():
     global wait_transmission
 
     while True:
-        
+        print("recording")
         while wait_transmission:
             #record
             rec0, rec1 = rec()
@@ -172,9 +174,10 @@ def recognition(name):
     global key
     
     while True:
-
         while (wait_recognition):
             pass
+
+        print("please speak")
 
         while True:
             a = sock.recv(bufsize)
@@ -208,16 +211,16 @@ def recognition(name):
             else:
                 key = "dontcare"
 
+            print(key)
+
             wait_recognition = True
             wait_transmission = False
     
 
 if __name__ == '__main__':
         
-    thread_1 = threading.Thread(target=transmission())
-    thread_2 = threading.Thread(target=recognition("sakuma"))
+    thread_1 = threading.Thread(target=recognition, args=(["sakuma"]))
+    thread_2 = threading.Thread(target=transmission)
 
-    stream.stop_stream()
-    stream.close()
-    p.terminate()
-
+    thread_1.start()
+    thread_2.start()
