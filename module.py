@@ -51,8 +51,7 @@ bufsize = 4096
 key = ""
 
 #prepare key of wait
-wait_transmission = True
-wait_recognition = False
+transmission = True
 
 #preparing record using pyaudio 
 p = pyaudio.PyAudio()
@@ -121,16 +120,15 @@ def select_vibration(num, keyword):
 
     return num
 
-def transmission():
-
-    global wait_recognition
-    global wait_transmission
+def calc():
 
     while True:
+
+        global transmission
+
         print("recording")
-        while wait_transmission:
-            #record
-            rec0, rec1 = rec()
+        #record
+        rec0, rec1 = rec()
 
         #zero padding
         wave1 = np.concatenate([rec0, space])
@@ -160,22 +158,18 @@ def transmission():
             throw = select_angle(theta)
             throw = select_vibration(throw, key)
 
-            ser.write(str(throw).encode())  
+            if transmission:
+                ser.write(str(throw).encode())
+                transmission = False
 
         print(throw)
 
-        wait_transmission = True
-        wait_recognition = False
-
 def recognition(name):
 
-    global wait_recognition
-    global wait_transmission
+    global transmission
     global key
     
     while True:
-        while (wait_recognition):
-            pass
 
         print("please speak")
 
@@ -213,14 +207,13 @@ def recognition(name):
 
             print(key)
 
-            wait_recognition = True
-            wait_transmission = False
+            transmission = True
     
 
 if __name__ == '__main__':
         
     thread_1 = threading.Thread(target=recognition, args=(["sakuma"]))
-    thread_2 = threading.Thread(target=transmission)
+    thread_2 = threading.Thread(target=calc)
 
     thread_1.start()
     thread_2.start()
