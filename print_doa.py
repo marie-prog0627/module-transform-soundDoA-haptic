@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 
 
 #detect const about record
-CHUNK = 4096
+CHUNK = 1024
 FORMAT = pyaudio.paFloat32
 CHANNELS = 2
 RATE = 48000
@@ -20,6 +20,9 @@ DISTANCE = 0.1
 dt = 1 / RATE
 space = np.zeros(LENGTH - CHUNK)
 hanning = np.concatenate([np.hanning(CHUNK), space])
+
+#prepareing arduino
+ser = serial.Serial('/dev/ttyACM0',115200)
 
 #preparing record using pyaudio 
 p = pyaudio.PyAudio()
@@ -57,6 +60,8 @@ def csp(spectrum0, spectrum1):
 
     csp = np.fft.ifft(xcor)
 
+    return csp
+
 def main():
 
     #record
@@ -71,18 +76,20 @@ def main():
     fft1 = np.fft.fft(wave2 * hanning)
 
     #csp method
-    csp(fft0, fft1)
+    angle = csp(fft0, fft1)
 
     #estimate direction of arrival
-    if np.argmax(csp.real) > LENGTH/2:
-        delay = (np.argmax(csp.real) - LENGTH) * dt
+    if np.argmax(angle.real) > LENGTH/2:
+        delay = (np.argmax(angle.real) - LENGTH) * dt
     else:
-        delay = np.argmax(csp.real) * dt
+        delay = np.argmax(angle.real) * dt
 
     theta = np.arcsin(delay * SOUND_SPEED / DISTANCE) / np.pi
 
     #print theta
     print(theta)
+
+    
 
 if __name__ == '__main__':
     

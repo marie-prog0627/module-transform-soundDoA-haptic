@@ -1,110 +1,141 @@
+import numpy as np
 import pyaudio
 import wave
-import numpy as np
 import serial
 
-chunk = 48000
-length = 48000
-fs = 48000
-Format = pyaudio.paInt16
-Channels = 2
-soundspeed = 340
-micdistance = 0.1
 
+#detect const about record
+CHUNK = 1024
+FORMAT = pyaudio.paFloat32
+CHANNELS = 2
+RATE = 48000
+INDEX = 0
 
+#detect const about processing
+LENGTH = 48000
+SOUND_SPEED = 340
+DISTANCE = 0.1
 
+#detect variable about processing
+dt = 1 / RATE
+space = np.zeros(LENGTH - CHUNK)
+hanning = np.concatenate([np.hanning(CHUNK), space])
+
+#prepareing arduino
 ser = serial.Serial('/dev/ttyACM0',115200)
 
-
-hanning = np.hanning(length)
-
+#preparing record using pyaudio 
 p = pyaudio.PyAudio()
 
-stream = p.open(format=Format,
-                channels=Channels,
-                rate=fs,
+stream = p.open(format=FORMAT,
+                channels=CHANNELS,
+                input_device_index=INDEX,
+                rate=RATE,
                 input=True,
-                frames_per_buffer=chunk)
-
+                frames_per_buffer=CHUNK)
 
 def rec():
-
+    #record sound with 2 channel
     frames = []
-    num_frames = []
-
-    data = stream.read(chunk)
+    data = stream.read(CHUNK)
     frames.append(data)
-
-    num_frames.append(np.frombuffer(data, dtype='int16').reshape(
-        (chunk, Channels)) / float(chunk))
-    num_data = np.frombuffer(data, dtype='int16').reshape(
-        (chunk, Channels)) / float(chunk)
-
-    ch1 = num_data[:, 0]
-    ch2 = num_data[:, 1]
+    data = b''.join(frames)
     
-    zarray = np.zeros(length - chunk)
-    ch1 = np.concatenate([ch1, zarray])
-    ch2 = np.concatenate([ch2, zarray])
+    #extract sound values
+    rec = np.frombuffer(data, dtype="float32")
+    rec0 = rec[0::2]
+    rec1 = rec[1::2]
 
-    fft1 = np.fft.fft(ch1 * hanning)
-    fft2 = np.fft.fft(ch2 * hanning)
+    return rec0, rec1
 
-    xcor = fft1 * np.conj(fft2) / (abs(fft1) * abs(fft2))
 
-    for i in range(chunk):
+def csp(spectrum0, spectrum1):
+
+    xcor = np.conj(np.array(spectrum0)) * np.array(spectrum1) / (np.abs(np.array(spectrum0)) * np.abs(np.array(spectrum1)))
+    
+    #band pass filter
+    for i in range(xcor.shape[0]):
         if i > 2000 or i < 200:
             xcor[i] = 0
 
     csp = np.fft.ifft(xcor)
 
-    if np.argmax(csp) > chunk / 2:
-        delay = float(np.argmax(csp) - chunk) / fs
+    return csp
+
+def select_angle(angle):
+    if angle >= -0.5 and angle < -0.27:
+        num = 6
+    elif angle >= -0.27 and angle < -0.125:
+        num = 5
+    elif angle >= -0.125 and angle < 0.125:
+        num = 4
+    elif angle >= 0.125 and angle < 0.27:
+        num = 3
+    elif angle >= 0.27 and angle <= 0.5:
+        num = 2
+
+    return num
+
+def select_vibration(num, keyword):
+    if keyword == "name":
+        num = num + 8
+    elif keyword == "care":
+        num = num + 16
+    elif keyword == "pupu":
+        num = num + 24
+    elif keyword == "excuse":
+        num = num + 32
+    elif keyword == "hi":
+        num = num + 40
     else:
-        delay = float(np.argmax(csp)) / fs
+        num = 1
 
-    print(np.argmax(csp))
+    return num
 
-    theta = np.arcsin(delay * soundspeed / micdistance) / np.pi
 
+def main():
+
+    #record
+    rec0, rec1 = rec()
+
+    #zero padding
+    wave1 = np.concatenate([rec0, space])
+    wave2 = np.concatenate([rec1, space])
+
+    #fft wave
+    fft0 = np.fft.fft(wave1 * hanning)
+    fft1 = np.fft.fft(wave2 * hanning)
+
+    #csp method
+    angle = csp(fft0, fft1)
+
+    #estimate direction of arrival
+    if np.argmax(angle.real) > LENGTH/2:
+        delay = (np.argmax(angle.real) - LENGTH) * dt
+    else:
+        delay = np.argmax(angle.real) * dt
+
+    theta = np.arcsin(delay * SOUND_SPEED / DISTANCE) / np.pi
+
+    #print theta
     print(theta)
-    
-    Abs1 = abs(fft1[200:2000])
-    Abs2 = abs(fft2[200:2000])
-    
-    if Abs1[np.argmax(Abs1)] > Abs2[np.argmax(Abs2)]:
-        maxi = Abs1[np.argmax(Abs1)]
+
+    if delay > 50:
+        throw = 1
     else:
-        maxi = Abs2[np.argmax(Abs2)]
+        throw = select_angle(theta)
+        throw = select_vibration(throw)
 
-    print(maxi)
-    throw = 0
-
-    if maxi < 50:
-        throw = 12
-    elif theta >= -0.5 and theta < -0.27:
-        throw = 6
-        ser.write(b"6")
-    elif theta >= -0.27 and theta < -0.125:
-        throw = 5
-        ser.write(b"5")
-    elif theta >= -0.125 and theta < 0.125:
-        throw = 4
-        ser.write(b"4")
-    elif theta >= 0.125 and theta < 0.27:
-        throw = 3
-        ser.write(b"3")
-    elif theta >= 0.27 and theta <= 0.5:
-        throw = 2
-        ser.write(b"2")
+        ser.write(str(throw).encode())  
 
     print(throw)
 
+    
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
+    
     while True:
-        rec()
+        main()
 
     stream.stop_stream()
     stream.close()
