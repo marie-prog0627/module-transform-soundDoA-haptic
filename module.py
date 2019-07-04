@@ -17,7 +17,7 @@ import time
 
 
 #detect const about record
-CHUNK = 4096
+CHUNK = 24000
 FORMAT = pyaudio.paFloat32
 CHANNELS = 2
 RATE = 48000
@@ -126,7 +126,7 @@ def calc():
 
         global transmission
 
-        print("recording")
+        #print("recording")
         #record
         rec0, rec1 = rec()
 
@@ -150,7 +150,7 @@ def calc():
         theta = np.arcsin(delay * SOUND_SPEED / DISTANCE) / np.pi
 
         #print theta
-        print(theta)
+        #print(theta)
 
         if delay > 50:
             throw = 1
@@ -162,7 +162,7 @@ def calc():
                 ser.write(str(throw).encode())
                 transmission = False
 
-        print(throw)
+                print(throw)
 
 def recognition(name):
 

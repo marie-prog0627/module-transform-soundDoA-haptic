@@ -1,11 +1,12 @@
 import numpy as np
 import pyaudio
 import wave
+import serial
 from matplotlib import pyplot as plt
 
 
 #detect const about record
-CHUNK = 1024
+CHUNK = 24000
 FORMAT = pyaudio.paFloat32
 CHANNELS = 2
 RATE = 48000
