@@ -1,4 +1,3 @@
-from __future__ import print_function
 import numpy as np
 import pyaudio
 import wave
@@ -7,10 +6,16 @@ import os
 import sys
 import socket
 from contextlib import closing
+import subprocess
+import string
+import random
+import threading
+from numpy.random import *
+import time
 
 
 #detect const about record
-CHUNK = 1024
+CHUNK = 4096
 FORMAT = pyaudio.paFloat32
 CHANNELS = 2
 RATE = 48000
@@ -26,8 +31,26 @@ dt = 1 / RATE
 space = np.zeros(LENGTH - CHUNK)
 hanning = np.concatenate([np.hanning(CHUNK), space])
 
-#prepareing arduino
+#prepare arduino
 ser = serial.Serial('/dev/ttyACM0',115200)
+
+#prepare hosting
+host = "localhost"
+port = 10500
+p = subprocess.Popen(["./julius_start.sh"], stdout=subprocess.PIPE, shell=True)
+pid = str(p.stdout.read().decode('utf-8')) # juliusのプロセスIDを取得
+time.sleep(5)
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.connect((host, port))
+data = ""
+bufsize = 4096
+
+#prepare box of recognition
+key = ""
+
+#prepare key of wait
+wait_transmission = True
+wait_recognition = False
 
 #preparing record using pyaudio 
 p = pyaudio.PyAudio()
@@ -52,7 +75,6 @@ def rec():
     rec1 = rec[1::2]
 
     return rec0, rec1
-
 
 def csp(spectrum0, spectrum1):
 
@@ -86,7 +108,7 @@ def select_vibration(num, keyword):
         num = num + 8
     elif keyword == "care":
         num = num + 16
-    elif keyword == "pupu":
+    elif keyword == "pu":
         num = num + 24
     elif keyword == "excuse":
         num = num + 32
@@ -97,62 +119,103 @@ def select_vibration(num, keyword):
 
     return num
 
+def transmission():
 
+    global wait_recognition
+    global wait_transmission
 
+    while True:
+        
+        while wait_transmission:
+            #record
+            rec0, rec1 = rec()
 
-def main():
+        #zero padding
+        wave1 = np.concatenate([rec0, space])
+        wave2 = np.concatenate([rec1, space])
 
-    #record
-    rec0, rec1 = rec()
+        #fft wave
+        fft0 = np.fft.fft(wave1 * hanning)
+        fft1 = np.fft.fft(wave2 * hanning)
 
-    #zero padding
-    wave1 = np.concatenate([rec0, space])
-    wave2 = np.concatenate([rec1, space])
+        #csp method
+        angle = csp(fft0, fft1)
 
-    #fft wave
-    fft0 = np.fft.fft(wave1 * hanning)
-    fft1 = np.fft.fft(wave2 * hanning)
+        #estimate direction of arrival
+        if np.argmax(angle.real) > LENGTH/2:
+            delay = (np.argmax(angle.real) - LENGTH) * dt
+        else:
+            delay = np.argmax(angle.real) * dt
 
-    #csp method
-    angle = csp(fft0, fft1)
+        theta = np.arcsin(delay * SOUND_SPEED / DISTANCE) / np.pi
 
-    #estimate direction of arrival
-    if np.argmax(angle.real) > LENGTH/2:
-        delay = (np.argmax(angle.real) - LENGTH) * dt
-    else:
-        delay = np.argmax(angle.real) * dt
+        #print theta
+        print(theta)
 
-    theta = np.arcsin(delay * SOUND_SPEED / DISTANCE) / np.pi
+        if delay > 50:
+            throw = 1
+        else:
+            throw = select_angle(theta)
+            throw = select_vibration(throw, key)
 
-    #print theta
-    print(theta)
+            ser.write(str(throw).encode())  
 
-    if delay > 50:
-        throw = 1
-    else:
-        throw = select_angle(theta)
-        throw = select_vibration(throw)
+        print(throw)
 
-        ser.write(str(throw).encode())  
+        wait_transmission = True
+        wait_recognition = False
 
-    print(throw)
+def recognition(name):
 
+    global wait_recognition
+    global wait_transmission
+    global key
+    
+    while True:
+
+        while (wait_recognition):
+            pass
+
+        while True:
+            a = sock.recv(bufsize)
+            if "<RECOGOUT>" in a:
+                b = ""
+                break
+        
+        while True:
+            a = sock.recv(bufsize)
+            b = b + a
+            if "</RECOGOUT>" in a:
+                # for debug
+                print(b)
+                index = b.find("CM=",110)
+                score = float(b[index+4:index+9])
+                print(score)
+
+                break
+
+        if score > 0.9:
+            if "hi" in b:
+                key = "hi"
+            elif "care" in b:
+                key = "care"
+            elif "excuse" in b:
+                key = "excuse"
+            elif name in b:
+                key = "name"
+            elif "pu" in b:
+                key = "pu"
+            else:
+                key = "dontcare"
+
+            wait_recognition = True
+            wait_transmission = False
     
 
 if __name__ == '__main__':
-
-    host = '127.0.0.1'
-    port = 10500
-    bufsize = 4096
-    b = ""
-    index = -1
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    with closing(sock):
-        sock.connect((host, port))
-    
-    while True:
-        main()
+        
+    thread_1 = threading.Thread(target=transmission())
+    thread_2 = threading.Thread(target=recognition("sakuma"))
 
     stream.stop_stream()
     stream.close()
