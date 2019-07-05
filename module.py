@@ -106,15 +106,15 @@ def select_angle(angle):
 
 def select_vibration(num, keyword):
     if keyword == "name":
-        num = num + 8
+        num = num + 10
     elif keyword == "care":
-        num = num + 16
+        num = num + 20
     elif keyword == "pu":
-        num = num + 24
+        num = num + 30
     elif keyword == "excuse":
-        num = num + 32
-    elif keyword == "hi":
         num = num + 40
+    elif keyword == "hi":
+        num = num + 50
     else:
         num = 1
 
