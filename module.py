@@ -172,9 +172,10 @@ def calc():
     global transmission
     global record
 
+    frames = []
+    num_frames = []
+
     while True:
-        frames = []
-        num_frames = []
         while record:
             data = stream.read(CHUNK)
             frames.append(data)
@@ -206,6 +207,9 @@ def calc():
                     ser.write(str(throw).encode())
     
                     print(throw)
+
+            frames = []
+            num_frames = []
 
             transmission = False
 
