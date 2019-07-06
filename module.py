@@ -170,17 +170,22 @@ def calc_usecsp():
 def calc():
 
     global transmission
-    frames = []
-    num_frames = []
+    global record
 
     while True:
-        for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
+        frames = []
+        num_frames = []
+        while record:
             data = stream.read(CHUNK)
             frames.append(data)
             num_data = np.frombuffer(data, dtype='int16').reshape((CHUNK, CHANNELS)) / float(2 ** 15)
             num_frames.append(np.frombuffer(data, dtype='int16').reshape((CHUNK, CHANNELS)) / float(2 ** 15))
-            ch1 = num_data[:,0]
-            ch2 = num_data[:,1]
+
+            transmission = True
+
+        while transmission:  
+            ch1 = num_frames[:,0]
+            ch2 = num_frames[:,1]
     
             ch1 = ch1 - np.mean(ch1)
             ch2 = ch2 - np.mean(ch2)
@@ -191,7 +196,7 @@ def calc():
     
             theta = np.arcsin(angle * SOUND_SPEED / DISTANCE) / np.pi
 
-            if angle > 50:
+            if abs(angle * SOUND_SPEED / DISTANCE) > 50:
                 throw = 1
             else:
                 throw = select_angle(theta)
@@ -199,9 +204,10 @@ def calc():
 
                 if transmission:
                     ser.write(str(throw).encode())
-                    transmission = False
     
                     print(throw)
+
+            transmission = False
 
         
 
@@ -251,89 +257,21 @@ def recognition(name):
 
             transmission = True
 
-def main(name):
-    global key
-    while True:
-    
-        print("please speak")
-
-        while True:
-            a = sock.recv(bufsize)
-            while True:
-                a = sock.recv(bufsize)
-                if "<RECOGOUT>" in a:
-                    b = ""
-                    break
-
-            frames = []
-        
-            while True:
-                a = sock.recv(bufsize)
-                b = b + a
-
-                data = stream.read(CHUNK)
-                frames.append(np.frombuffer(data, dtype='int16').reshape((CHUNK, CHANNELS)) / float(2 ** 15))
-
-                if "</RECOGOUT>" in a:
-                    # for debug
-                    print(b)
-                    index = b.find("CM=",110)
-                    score = float(b[index+4:index+9])
-                    print(score)
-                    break
-
-            #extract sound values
-            rec = np.frombuffer(frames, dtype="int16")
-            rec1 = rec[:,0]
-            rec2 = rec[:,1]
-
-            if score > 0.9:
-                if "hi" in b:
-                    key = "hi"
-                elif "care" in b:
-                    key = "care"
-                elif "excuse" in b:
-                    key = "excuse"
-                elif name in b:
-                    key = "name"
-                elif "pu" in b:
-                    key = "pu"
-                else:
-                    key = "dontcare"
-
-                
-                rec1 = rec1 - np.mean(rec1)
-                rec2 = rec2 - np.mean(rec2)
-
-                angle = np.argmax(np.correlate(rec1, rec2, "full")) - CHUNK
-    
-                print(angle)
-    
-                theta = np.arcsin(angle * SOUND_SPEED / DISTANCE) / np.pi
-
-                if abs(angle * SOUND_SPEED / DISTANCE) > 1:
-                    throw = 1
-                else:
-                    throw = select_angle(theta)
-                    throw = select_vibration(throw, key)
-
-                print(throw)
-
-                ser.write(str(throw).encode())
-
 
 
 
     
 
 if __name__ == '__main__':
+
+    global transmission
+
+    transmission = True
         
-    #thread_1 = threading.Thread(target=recognition, args=(["sakuma"]))
-    #thread_2 = threading.Thread(target=calc)
+    thread_1 = threading.Thread(target=recognition, args=(["sakuma"]))
+    thread_2 = threading.Thread(target=calc)
 
 
 
-    #thread_1.start()
-    #thread_2.start()
-
-    main("sakuma")
+    thread_1.start()
+    thread_2.start()
