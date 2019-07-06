@@ -6,8 +6,8 @@ from matplotlib import pyplot as plt
 
 
 #detect const about record
-CHUNK = 24000
-FORMAT = pyaudio.paFloat32
+CHUNK = 1024
+FORMAT = pyaudio.paInt16
 CHANNELS = 2
 RATE = 48000
 INDEX = 0
@@ -43,7 +43,7 @@ def rec():
     data = b''.join(frames)
     
     #extract sound values
-    rec = np.frombuffer(data, dtype="float32")
+    rec = np.frombuffer(data, dtype="int16")
     rec0 = rec[0::2]
     rec1 = rec[1::2]
 

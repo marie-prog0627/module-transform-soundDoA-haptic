@@ -17,8 +17,8 @@ import time
 
 
 #detect const about record
-CHUNK = 24000
-FORMAT = pyaudio.paFloat32
+CHUNK = 512
+FORMAT = pyaudio.paInt16
 CHANNELS = 2
 RATE = 48000
 INDEX = 0
@@ -27,6 +27,7 @@ INDEX = 0
 LENGTH = 48000
 SOUND_SPEED = 340
 DISTANCE = 0.1
+RECORD_SECONDS = 1
 
 #detect variable about processing
 dt = 1 / RATE
@@ -71,7 +72,7 @@ def rec():
     data = b''.join(frames)
     
     #extract sound values
-    rec = np.frombuffer(data, dtype="float32")
+    rec = np.frombuffer(data, dtype="int16")
     rec0 = rec[0::2]
     rec1 = rec[1::2]
 
@@ -120,7 +121,7 @@ def select_vibration(num, keyword):
 
     return num
 
-def calc():
+def calc_usecsp():
 
     while True:
 
@@ -163,6 +164,52 @@ def calc():
                 transmission = False
 
                 print(throw)
+
+
+def calc():
+
+    global transmission
+    frames = []
+    num_frames = []
+
+    while True:
+
+        for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
+            data = stream.read(CHUNK)
+            frames.append(data)
+            num_data = np.frombuffer(data, dtype='int16').reshape((CHUNK, CHANNELS)) / float(2 ** 15)
+            num_frames.append(np.frombuffer(data, dtype='int16').reshape((CHUNK, CHANNELS)) / float(2 ** 15))
+            ch1 = num_data[:,0]
+            ch2 = num_data[:,1]
+    
+            ch1 = ch1 - np.mean(ch1)
+            ch2 = ch2 - np.mean(ch2)
+
+            angle = np.argmax(np.correlate(ch1, ch2, "full")) - CHUNK
+    
+            print(angle)
+
+            #estimate direction of arrival
+            if np.argmax(angle.real) > LENGTH/2:
+                delay = (np.argmax(angle.real) - LENGTH) * dt
+            else:
+                delay = np.argmax(angle.real) * dt
+    
+            theta = np.arcsin(delay * SOUND_SPEED / DISTANCE) / np.pi
+
+            if delay > 50:
+                throw = 1
+            else:
+                throw = select_angle(theta)
+                throw = select_vibration(throw, key)
+
+                if transmission:
+                    ser.write(str(throw).encode())
+                    transmission = False
+    
+                    print(throw)
+
+        
 
 def recognition(name):
 
