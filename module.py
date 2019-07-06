@@ -192,7 +192,7 @@ def calc():
 
             angle = np.argmax(np.correlate(ch1, ch2, "full")) - CHUNK
     
-            print(angle)
+            print("angle is" + angle)
     
             theta = np.arcsin(angle * SOUND_SPEED / DISTANCE) / np.pi
 
@@ -234,7 +234,11 @@ def recognition(name):
                 # for debug
                 print(b)
                 index = b.find("CM=",110)
-                score = float(b[index+4:index+9])
+                try:
+                    score = float(b[index+4:index+9])
+                except ValueError:
+                    score = 0
+
                 print(score)
                 record = False
                 break
