@@ -16,7 +16,6 @@ p = pyaudio.PyAudio()
 
 stream = p.open(format=FORMAT,
                 channels=CHANNELS,
-                input_device_index=0,
                 rate=RATE,
                 input=True,
                 frames_per_buffer=CHUNK)
@@ -46,6 +45,7 @@ fill = np.zeros(3000)
 
 for i in range(1500):
     fill[500 + i] = 1
+
 
 for i in range(CHANNELS):
     plt.subplot(CHANNELS, 1, i + 1)

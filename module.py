@@ -38,18 +38,6 @@ hanning = np.concatenate([np.hanning(CHUNK), space])
 #prepare arduino
 ser = serial.Serial('/dev/ttyACM0',115200)
 
-#preparing record using pyaudio 
-p = pyaudio.PyAudio()
-
-stream = p.open(format=FORMAT,
-                channels=CHANNELS,
-                input_device_index=INDEX,
-                rate=RATE,
-                input=True,
-                frames_per_buffer=CHUNK)
-
-stream.stop_stream()
-
 #prepare hosting
 host = "localhost"
 port = 10500
@@ -67,6 +55,17 @@ key = ""
 #prepare key of wait
 transmission = True
 record = True
+
+#preparing record using pyaudio 
+p = pyaudio.PyAudio()
+
+stream = p.open(format=FORMAT,
+                channels=CHANNELS,
+                input_device_index=INDEX,
+                rate=RATE,
+                input=True,
+                frames_per_buffer=CHUNK)
+stream.stop_stream()
 
 def rec():
     #record sound with 2 channel
@@ -174,6 +173,7 @@ def calc():
 
     global transmission
     global record
+    global stream
 
     frames = []
     num_frames = []
@@ -185,34 +185,29 @@ def calc():
             frames.append(data)
             num_data = np.frombuffer(data, dtype='int16').reshape((CHUNK, CHANNELS)) / float(2 ** 15)
             num_frames.append(np.frombuffer(data, dtype='int16').reshape((CHUNK, CHANNELS)) / float(2 ** 15))
-            
+
             transmission = True
-        
 
         while transmission:
-            stream.stop_stream()
             print("rec stop")
-            x = np.concatenate(num_frames)
-            ch1 = x[:,0]
-            ch2 = x[:,1]
+            stream.stop_stream()
+            ch = np.concatenate(num_frames)
+            ch1 = ch[:,0]
+            ch2 = ch[:,1]
     
             ch1 = ch1 - np.mean(ch1)
             ch2 = ch2 - np.mean(ch2)
-            
-            plt.plot(ch1)
-            plt.plot(ch2)
-            
-            plt.savefig("figure.png")
 
-            angle = np.argmax(np.correlate(ch1, ch2, "full")) - ch1.size
+            angle = np.argmax(np.correlate(ch1, ch2, "full")) - CHUNK
+    
             print("angle")
             print(angle)
+    
+            theta = np.arcsin(angle * SOUND_SPEED * dt / DISTANCE) / np.pi
 
-            if abs(angle * SOUND_SPEED / DISTANCE) > 1:
+            if abs(angle * SOUND_SPEED * dt / DISTANCE) > 1:
                 throw = 1
-                print("invalid value")
             else:
-                theta = np.arcsin(angle * SOUND_SPEED / DISTANCE) / np.pi
                 throw = select_angle(theta)
                 throw = select_vibration(throw, key)
 
@@ -232,11 +227,8 @@ def recognition(name):
 
     global transmission
     global key
-    global record
     global stream
-    
-    record = False
-    transmission = False
+    global record
     
     while True:
 
@@ -261,11 +253,9 @@ def recognition(name):
                     score = float(b[index+4:index+9])
                 except ValueError:
                     score = 0
-                    
-                print("score")
+
                 print(score)
                 record = False
-                
                 break
 
         if score > 0.9:
@@ -282,7 +272,9 @@ def recognition(name):
             else:
                 key = "dontcare"
 
-            print("key:" + key)
+            print(key)
+
+            transmission = True
 
 
 
@@ -290,9 +282,9 @@ def recognition(name):
     
 
 if __name__ == '__main__':
+    record = False
+    transmission = False
 
-    transmission = True
-        
     thread_1 = threading.Thread(target=recognition, args=(["sakuma"]))
     thread_2 = threading.Thread(target=calc)
 
