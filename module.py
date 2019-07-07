@@ -14,10 +14,11 @@ import random
 import threading
 from numpy.random import *
 import time
+from matplotlib import pyplot as plt
 
 
 #detect const about record
-CHUNK = 512
+CHUNK = 1024
 FORMAT = pyaudio.paInt16
 CHANNELS = 2
 RATE = 48000
@@ -171,12 +172,14 @@ def calc():
 
     global transmission
     global record
+    global stream
 
     frames = []
     num_frames = []
 
     while True:
         while record:
+            print("rec start")
             data = stream.read(CHUNK)
             frames.append(data)
             num_data = np.frombuffer(data, dtype='int16').reshape((CHUNK, CHANNELS)) / float(2 ** 15)
@@ -184,7 +187,9 @@ def calc():
 
             transmission = True
 
-        while transmission:  
+        while transmission:
+            print("rec stop")
+            stream.stop_stream()  
             ch1 = num_frames[:,0]
             ch2 = num_frames[:,1]
     
@@ -195,9 +200,9 @@ def calc():
     
             print("angle is" + angle)
     
-            theta = np.arcsin(angle * SOUND_SPEED / DISTANCE) / np.pi
+            theta = np.arcsin(angle * SOUND_SPEED * dt / DISTANCE) / np.pi
 
-            if abs(angle * SOUND_SPEED / DISTANCE) > 50:
+            if abs(angle * SOUND_SPEED * dt / DISTANCE) > 1:
                 throw = 1
             else:
                 throw = select_angle(theta)
@@ -219,6 +224,7 @@ def recognition(name):
 
     global transmission
     global key
+    global stream
     
     while True:
 
@@ -228,6 +234,7 @@ def recognition(name):
             a = sock.recv(bufsize)
             if "<RECOGOUT>" in a:
                 b = ""
+                stream.start_stream()
                 record = True
                 break
         
@@ -237,7 +244,7 @@ def recognition(name):
             if "</RECOGOUT>" in a:
                 # for debug
                 print(b)
-                index = b.find("CM=",110)
+                index = b.find("CM=")
                 try:
                     score = float(b[index+4:index+9])
                 except ValueError:
