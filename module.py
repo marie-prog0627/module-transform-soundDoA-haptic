@@ -18,7 +18,7 @@ from matplotlib import pyplot as plt
 
 
 #detect const about record
-CHUNK = 1024
+CHUNK = 4096
 FORMAT = pyaudio.paInt16
 CHANNELS = 2
 RATE = 48000
@@ -180,25 +180,35 @@ def calc():
 
     while True:
         while record:
-            print("rec start")
             data = stream.read(CHUNK)
             frames.append(data)
             num_data = np.frombuffer(data, dtype='int16').reshape((CHUNK, CHANNELS)) / float(2 ** 15)
             num_frames.append(np.frombuffer(data, dtype='int16').reshape((CHUNK, CHANNELS)) / float(2 ** 15))
-
-            transmission = True
+            
+            
+            if record:
+                frames = []
+                num_frames = []
+            else:
+                print("rec stop")
+                stream.stop_stream()
 
         while transmission:
-            print("rec stop")
-            stream.stop_stream()
             ch = np.concatenate(num_frames)
             ch1 = ch[:,0]
             ch2 = ch[:,1]
     
             ch1 = ch1 - np.mean(ch1)
             ch2 = ch2 - np.mean(ch2)
+            
+            plt.plot(ch1)
+            plt.plot(ch2)
+            
+            plt.savefig("figure.png")
+            
+            plt.cla()
 
-            angle = np.argmax(np.correlate(ch1, ch2, "full")) - CHUNK
+            angle = np.argmax(np.correlate(ch1[ch1.size - 3000:], ch2[ch2.size - 3000:], "full")) - 1500
     
             print("angle")
             print(angle)
@@ -220,6 +230,10 @@ def calc():
             num_frames = []
 
             transmission = False
+            record = True
+            
+            print("rec start")
+            stream.start_stream()
 
         
 
@@ -238,7 +252,7 @@ def recognition(name):
             a = sock.recv(bufsize)
             if "<RECOGOUT>" in a:
                 b = ""
-                stream.start_stream()
+#                stream.start_stream()
                 record = True
                 break
         
@@ -282,8 +296,11 @@ def recognition(name):
     
 
 if __name__ == '__main__':
-    record = False
+    record = True
     transmission = False
+    
+    print("rec start")
+    stream.start_stream()
 
     thread_1 = threading.Thread(target=recognition, args=(["sakuma"]))
     thread_2 = threading.Thread(target=calc)

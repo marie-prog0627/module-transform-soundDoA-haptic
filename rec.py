@@ -48,7 +48,7 @@ for i in range(1500):
 
 
 for i in range(CHANNELS):
-    plt.subplot(CHANNELS, 1, i + 1)
+    #plt.subplot(CHANNELS, 1, i + 1)
     wave = x[:,i]
     wave = wave[:3000:]
     fft = np.fft.fft(wave) * fill
