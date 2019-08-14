@@ -18,22 +18,22 @@ from matplotlib import pyplot as plt
 
 
 #detect const about record
-CHUNK = 4096
+CHUNK = 2048
 FORMAT = pyaudio.paInt16
 CHANNELS = 2
 RATE = 48000
 INDEX = 0
 
 #detect const about processing
-LENGTH = 48000
+LENGTH = 3000
 SOUND_SPEED = 340
-DISTANCE = 0.1
+DISTANCE = 0.12
 RECORD_SECONDS = 1
 
 #detect variable about processing
-dt = 1 / RATE
-space = np.zeros(LENGTH - CHUNK)
-hanning = np.concatenate([np.hanning(CHUNK), space])
+dt = float(1 / RATE)
+#space = np.zeros(LENGTH - CHUNK)
+hanning = np.hanning(LENGTH)
 
 #prepare arduino
 ser = serial.Serial('/dev/ttyACM0',115200)
@@ -67,27 +67,13 @@ stream = p.open(format=FORMAT,
                 frames_per_buffer=CHUNK)
 stream.stop_stream()
 
-def rec():
-    #record sound with 2 channel
-    frames = []
-    data = stream.read(CHUNK)
-    frames.append(data)
-    data = b''.join(frames)
-    
-    #extract sound values
-    rec = np.frombuffer(data, dtype="int16")
-    rec0 = rec[0::2]
-    rec1 = rec[1::2]
-
-    return rec0, rec1
-
 def csp(spectrum0, spectrum1):
 
     xcor = np.conj(np.array(spectrum0)) * np.array(spectrum1) / (np.abs(np.array(spectrum0)) * np.abs(np.array(spectrum1)))
     
     #band pass filter
-    for i in range(xcor.shape[0]):
-        if i > 2000 or i < 200:
+    for i in range(xcor.size):
+        if i > 2000 * xcor.size / RATE or i < 200 * xcor.size / RAET:
             xcor[i] = 0
 
     csp = np.fft.ifft(xcor)
@@ -95,15 +81,15 @@ def csp(spectrum0, spectrum1):
     return csp
 
 def select_angle(angle):
-    if angle >= -0.5 and angle < -0.27:
+    if angle >= -0.5 and angle < -0.25:
         num = 6
-    elif angle >= -0.27 and angle < -0.125:
+    elif angle >= -0.25 and angle < -0.125:
         num = 5
     elif angle >= -0.125 and angle < 0.125:
         num = 4
-    elif angle >= 0.125 and angle < 0.27:
+    elif angle >= 0.125 and angle < 0.25:
         num = 3
-    elif angle >= 0.27 and angle <= 0.5:
+    elif angle >= 0.25 and angle <= 0.5:
         num = 2
 
     return num
@@ -113,7 +99,7 @@ def select_vibration(num, keyword):
         num = num + 10
     elif keyword == "care":
         num = num + 20
-    elif keyword == "pu":
+    elif keyword == "carhorn":
         num = num + 30
     elif keyword == "excuse":
         num = num + 40
@@ -126,47 +112,86 @@ def select_vibration(num, keyword):
 
 def calc_usecsp():
 
+    global transmission
+    global record
+    global stream
+    global hanning
+
+    frames = []
+    num_frames = []
+    throw = 90
+
     while True:
+        while record:
+            data = stream.read(CHUNK)
+            #frames.append(data)
+            num_data = np.frombuffer(data, dtype='int16').reshape((CHUNK, CHANNELS)) / float(2 ** 15)
+            num_frames.append(np.frombuffer(data, dtype='int16').reshape((CHUNK, CHANNELS)) / float(2 ** 15))
+            
+            if record:
+                x = np.concatenate(num_frames)
+                if x.size > 160000:
+                    num_frames = num_frames[1:]
+                    print("preapred")
+                
+            else:
+                print("rec stop")
+                stream.stop_stream()
 
-        global transmission
+                ch = np.concatenate(num_frames)
 
-        #print("recording")
-        #record
-        rec0, rec1 = rec()
+                ch1 = ch[:,0]
+                ch2 = ch[:,1]
+    
+                ch1 = ch1 - np.mean(ch1)
+                ch2 = ch2 - np.mean(ch2)
+            
+                peek = np.argmax(ch1)
+                
+            
+                ch1 = ch1[peek - 1500:peek + 1500]
+                ch2 = ch2[peek - 1500:peek + 1500]
+                
+                
+                plt.plot(ch1)
+                plt.plot(ch2)
+            
+                plt.savefig("figure.png")
+                print("saved")
+            
+                plt.cla()
 
-        #zero padding
-        wave1 = np.concatenate([rec0, space])
-        wave2 = np.concatenate([rec1, space])
+                angle = csp(np.fft.fft(ch1 * hanning), np.fft.fft(ch2 * hanning))
+    
+                print("angle")
+                print(angle)
+                
+                condition = float(angle * SOUND_SPEED) / RATE / DISTANCE
+                
+                print(condition)
 
-        #fft wave
-        fft0 = np.fft.fft(wave1 * hanning)
-        fft1 = np.fft.fft(wave2 * hanning)
+                if abs(condition) > 1:
+                    throw = 90
+                else:
+                    theta = np.arcsin(float(angle * SOUND_SPEED) /RATE / DISTANCE) / np.pi
+                    print("tehta")
+                    print(theta)
+                    throw = select_angle(theta)
+                    throw = select_vibration(throw, key)
 
-        #csp method
-        angle = csp(fft0, fft1)
+        if transmission:
+            ser.write(str(throw).encode())
+    
+            print(throw)
 
-        #estimate direction of arrival
-        if np.argmax(angle.real) > LENGTH/2:
-            delay = (np.argmax(angle.real) - LENGTH) * dt
-        else:
-            delay = np.argmax(angle.real) * dt
+            frames = []
+            num_frames = []
 
-        theta = np.arcsin(delay * SOUND_SPEED / DISTANCE) / np.pi
-
-        #print theta
-        #print(theta)
-
-        if delay > 50:
-            throw = 1
-        else:
-            throw = select_angle(theta)
-            throw = select_vibration(throw, key)
-
-            if transmission:
-                ser.write(str(throw).encode())
-                transmission = False
-
-                print(throw)
+            transmission = False
+            record = True
+            
+            print("rec start")
+            stream.start_stream()
 
 
 def calc():
@@ -177,54 +202,70 @@ def calc():
 
     frames = []
     num_frames = []
+    throw = 90
 
     while True:
         while record:
             data = stream.read(CHUNK)
-            frames.append(data)
+            #frames.append(data)
             num_data = np.frombuffer(data, dtype='int16').reshape((CHUNK, CHANNELS)) / float(2 ** 15)
             num_frames.append(np.frombuffer(data, dtype='int16').reshape((CHUNK, CHANNELS)) / float(2 ** 15))
             
-            
             if record:
-                frames = []
-                num_frames = []
+                x = np.concatenate(num_frames)
+                if x.size > 160000:
+                    num_frames = num_frames[1:]
+                    print("preapred")
+                
             else:
                 print("rec stop")
                 stream.stop_stream()
 
-        while transmission:
-            ch = np.concatenate(num_frames)
-            ch1 = ch[:,0]
-            ch2 = ch[:,1]
-    
-            ch1 = ch1 - np.mean(ch1)
-            ch2 = ch2 - np.mean(ch2)
-            
-            plt.plot(ch1)
-            plt.plot(ch2)
-            
-            plt.savefig("figure.png")
-            
-            plt.cla()
+                ch = np.concatenate(num_frames)
 
-            angle = np.argmax(np.correlate(ch1[ch1.size - 3000:], ch2[ch2.size - 3000:], "full")) - 1500
+                ch1 = ch[:,0]
+                ch2 = ch[:,1]
     
-            print("angle")
-            print(angle)
-    
-            theta = np.arcsin(angle * SOUND_SPEED * dt / DISTANCE) / np.pi
+                ch1 = ch1 - np.mean(ch1)
+                ch2 = ch2 - np.mean(ch2)
+            
+                peek = np.argmax(ch1)
+                
+            
+                ch1 = ch1[peek - 1500:peek + 1500]
+                ch2 = ch2[peek - 1500:peek + 1500]
+                
+                
+                plt.plot(ch1)
+                plt.plot(ch2)
+            
+                plt.savefig("figure.png")
+                print("saved")
+            
+                plt.cla()
 
-            if abs(angle * SOUND_SPEED * dt / DISTANCE) > 1:
-                throw = 1
-            else:
-                throw = select_angle(theta)
-                throw = select_vibration(throw, key)
-
-                if transmission:
-                    ser.write(str(throw).encode())
+                angle = np.argmax(np.correlate(ch1, ch2, "full")) - ch1.size
     
-                    print(throw)
+                print("angle")
+                print(angle)
+                
+                condition = float(angle * SOUND_SPEED) / RATE / DISTANCE
+                
+                print(condition)
+
+                if abs(condition) > 1:
+                    throw = 90
+                else:
+                    theta = np.arcsin(float(angle * SOUND_SPEED) /RATE / DISTANCE) / np.pi
+                    print("tehta")
+                    print(theta)
+                    throw = select_angle(theta)
+                    throw = select_vibration(throw, key)
+
+        if transmission:
+            ser.write(str(throw).encode())
+    
+            print(throw)
 
             frames = []
             num_frames = []
@@ -253,7 +294,7 @@ def recognition(name):
             if "<RECOGOUT>" in a:
                 b = ""
 #                stream.start_stream()
-                record = True
+                record = False
                 break
         
         while True:
@@ -269,10 +310,9 @@ def recognition(name):
                     score = 0
 
                 print(score)
-                record = False
                 break
 
-        if score > 0.9:
+        if score > 0.6:
             if "hi" in b:
                 key = "hi"
             elif "care" in b:
@@ -282,16 +322,13 @@ def recognition(name):
             elif name in b:
                 key = "name"
             elif "pu" in b:
-                key = "pu"
+                key = "carhorn"
             else:
                 key = "dontcare"
 
             print(key)
 
             transmission = True
-
-
-
 
     
 
@@ -302,8 +339,8 @@ if __name__ == '__main__':
     print("rec start")
     stream.start_stream()
 
-    thread_1 = threading.Thread(target=recognition, args=(["sakuma"]))
-    thread_2 = threading.Thread(target=calc)
+    thread_1 = threading.Thread(target=recognition, args=(["yamada"]))
+    thread_2 = threading.Thread(target=calc_usecsp)
 
 
 
